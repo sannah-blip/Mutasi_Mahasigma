@@ -1,0 +1,34 @@
+2. Alur Kode (Proses Kerja)
+Aplikasi Anda bekerja dalam urutan logis sebagai berikut:
+
+Inisialisasi & Training (Fase Belajar):
+
+Saat aplikasi dijalankan, ia akan membaca dataset_training.csv menggunakan latih_model_ai().
+
+Data dilatih menggunakan model Naive Bayes. Hasilnya adalah vectorizer dan model_ai yang disimpan dalam cache agar aplikasi tidak perlu belajar ulang setiap kali ada refresh.
+
+Input Pengguna (Fase Upload):
+
+User mengunggah file (bisa CSV atau PDF) melalui sidebar.
+
+Jika CSV: Data langsung dibaca menggunakan pd.read_csv.
+
+Jika PDF: Fungsi ekstrak_dari_pdf akan memindai baris demi baris, mencari pola tanggal, membuang data "sampah" (seperti Bunga/Pajak), dan merapikannya menjadi tabel (Tanggal, Keterangan, Nominal).
+
+Klasifikasi AI (Fase Inferensi):
+
+Data yang terkumpul (dari berbagai file) digabungkan menjadi satu tabel (df_baru).
+
+Kolom Keterangan diubah menjadi angka oleh vectorizer, kemudian model AI menebak kategorinya (Kategori_AI).
+
+Setelah kategori didapat, dilakukan mapping untuk menyederhanakan kategori menjadi "Kelompok Besar" (seperti: Pengeluaran Pokok, Akademik).
+
+Visualisasi & Pelaporan (Fase Output):
+
+Aplikasi menghitung jumlah uang per kluster menggunakan .groupby() dan menampilkannya dalam tabel serta grafik pie chart.
+
+Fitur Download:
+
+Excel: Menggunakan pd.ExcelWriter untuk membungkus data hasil klasifikasi ke dalam format file .xlsx.
+
+PDF: Menggunakan reportlab untuk membuat dokumen laporan formal berisi ringkasan dan detail transaksi yang siap cetak.
