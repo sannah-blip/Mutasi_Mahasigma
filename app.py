@@ -20,51 +20,120 @@ st.title("Smart Financial Assistant")
 # ==========================================
 def ekstrak_dari_pdf(file_pdf):
     reader = pypdf.PdfReader(file_pdf)
-    data = []
-    pattern = re.compile(r'(\d{2})\s+(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)', re.IGNORECASE)
+
+    semua_teks = ""
+
     for page in reader.pages:
         text = page.extract_text()
-        if not text: continue
-        lines = text.split('\n')
-        current_trans = None
-        for line in lines:
-            line = line.strip()
-            match = pattern.search(line)
-            if match:
-                if current_trans: data.append(current_trans)
-                day, month = match.groups()
-                month_map = {"JAN":"01","FEB":"02","MAR":"03","APR":"04","MAY":"05","JUN":"06",
-                             "JUL":"07","AUG":"08","SEP":"09","OCT":"10","NOV":"11","DEC":"12"}
-                current_trans = {'Tanggal': f"2026-{month_map[month.upper()]}-{day}", 'Keterangan': "", 'Nominal': 0}
-            elif current_trans:
-                if any(x in line for x in ["Bunga", "Pajak"]): current_trans = None; continue
-                if re.search(r'\d{1,3}(\.\d{3})+', line):
-                    numbers = re.findall(r'\d{1,3}(\.\d{3})+', line)
-                    if current_trans['Nominal'] == 0: current_trans['Nominal'] = int(numbers[0].replace('.', ''))
-                elif len(line) > 3 and not line.isdigit(): current_trans['Keterangan'] += " " + line
-    if current_trans and current_trans['Nominal'] > 0: data.append(current_trans)
-    return pd.DataFrame(data)
+        if text:
+            semua_teks += "\n" + text
 
+    lines = [line.strip() for line in semua_teks.split("\n") if line.strip()]
+
+    month_map = {
+        "JAN": "01", "FEB": "02", "MAR": "03",
+        "APR": "04", "MAY": "05", "JUN": "06",
+        "JUL": "07", "AUG": "08", "SEP": "09",
+        "OCT": "10", "NOV": "11", "DEC": "12"
+    }
+
+    tanggal_pattern = re.compile(
+        r"^(\d{2})\s+(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\b",
+        re.IGNORECASE
+    )
+
+    nominal_pattern = re.compile(
+        r"^\d{1,3}(?:,\d{3})*$"
+    )
+
+    data = []
+    i = 0
+
+    while i < len(lines):
+
+        match = tanggal_pattern.match(lines[i])
+
+        if match:
+
+            day, month = match.groups()
+
+            transaksi = {
+                "Tanggal": f"2026-{month_map[month.upper()]}-{day}",
+                "Keterangan": "",
+                "Nominal": 0
+            }
+
+            keterangan = []
+
+            sisa_baris = lines[i][match.end():].strip()
+
+            if sisa_baris:
+                keterangan.append(sisa_baris)
+
+            j = i + 1
+
+            while j < len(lines):
+
+                if tanggal_pattern.match(lines[j]):
+                    break
+
+                if nominal_pattern.match(lines[j]):
+
+                    transaksi["Nominal"] = int(
+                        lines[j].replace(",", "")
+                    )
+                    break
+
+                if "Bunga Tabungan" not in lines[j]:
+                    keterangan.append(lines[j])
+
+                j += 1
+
+            transaksi["Keterangan"] = " ".join(keterangan).strip()
+
+            if (
+                transaksi["Nominal"] > 0
+                and "Bunga Tabungan" not in transaksi["Keterangan"]
+            ):
+                data.append(transaksi)
+
+            i = j
+
+        else:
+            i += 1
+
+    return pd.DataFrame(data)
 def buat_pdf_laporan(dataframe, df_ringkasan):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     story = []
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=16, spaceAfter=15)
-    story.append(Paragraph("LAPORAN KEUANGAN", title_style))
     
-    # Tabel Ringkasan
-    data_ringkasan = [["Kategori", "Total Pengeluaran"]]
+    story.append(Paragraph("LAPORAN KEUANGAN", styles['Title']))
+    story.append(Spacer(1, 12))
+    
+    # Tabel Ringkasan (Menggunakan nama kolom yang dinamis)
+    story.append(Paragraph("<b>A. Ringkasan Pengeluaran</b>", styles['Heading2']))
+    data_ringkasan = [list(df_ringkasan.columns)] # Header otomatis dari kolom
     for _, row in df_ringkasan.iterrows():
-        data_ringkasan.append([row.iloc[0], f"Rp {row.iloc[1]:,.0f}"])
+        # Memformat nominal jika kolomnya adalah 'Nominal'
+        row_data = [str(row[col]) if col != 'Nominal' else f"Rp {row[col]:,.0f}" for col in df_ringkasan.columns]
+        data_ringkasan.append(row_data)
+    
     story.append(Table(data_ringkasan, hAlign='LEFT'))
     story.append(Spacer(1, 20))
     
-    # Tabel Detail
-    data_mutasi = [["Tanggal", "Keterangan", "Nominal", "Kategori AI"]]
+    # Tabel Detail Mutasi
+    story.append(Paragraph("<b>B. Rincian Mutasi</b>", styles['Heading2']))
+    data_mutasi = [["Tanggal", "Keterangan", "Nominal", "Kategori"]]
     for _, row in dataframe.iterrows():
-        data_mutasi.append([str(row['Tanggal']), row['Keterangan'], f"Rp {row['Nominal']:,.0f}", row['Kategori_AI']])
-    story.append(Table(data_mutasi, hAlign='LEFT'))
+        data_mutasi.append([
+            str(row['Tanggal']), 
+            str(row['Keterangan']), 
+            f"Rp {row['Nominal']:,.0f}", 
+            str(row['Kategori_AI'])
+        ])
+    story.append(Table(data_mutasi, hAlign='LEFT', colWidths=[70, 200, 80, 100]))
     
     doc.build(story)
     buffer.seek(0)
